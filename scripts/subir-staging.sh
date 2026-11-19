@@ -24,14 +24,15 @@ COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.staging.yml)
 MODULOS=(crm produtos contratos financeiro chamados marketing landing)
 
 echo "=== 1/3 · Infraestrutura (PostgreSQL, RabbitMQ e Mailpit local) ==="
-"${COMPOSE[@]}" pull postgres rabbitmq rabbitmq-init mailpit
-"${COMPOSE[@]}" up -d postgres rabbitmq rabbitmq-init mailpit
+"${COMPOSE[@]}" up -d --no-recreate postgres rabbitmq mailpit
+"${COMPOSE[@]}" up -d rabbitmq-init
 
 echo "=== 2/3 · Plataforma — Grupo 2 (Identity, Gateway, Casca e Caddy HTTPS) ==="
 "${COMPOSE[@]}" --profile plataforma pull identity gateway casca caddy
 "${COMPOSE[@]}" --profile plataforma up -d identity gateway casca caddy
 
 echo "=== 3/3 · Módulos de negócio (independentes) ==="
+ATIVOS=()
 for modulo in "${MODULOS[@]}"; do
   var_api="IMAGEM_$(echo "$modulo" | tr '[:lower:]' '[:upper:]')"
   var_front="${var_api}_FRONT"
@@ -46,10 +47,25 @@ for modulo in "${MODULOS[@]}"; do
   echo "[*] Módulo '$modulo': tentando baixar $img_api e $img_front..."
   if "${COMPOSE[@]}" --profile modulos pull "$modulo" "${modulo}-front"; then
     "${COMPOSE[@]}" --profile modulos up -d "$modulo" "${modulo}-front"
+    ATIVOS+=("$modulo")
     echo "[+] Módulo '$modulo': no ar."
   else
     echo "[!] Módulo '$modulo': falha ao baixar imagem no GHCR (não publicada ou privada) — ignorado."
   fi
+done
+
+echo ""
+echo "=== Aquecendo rotas no Gateway (warm-up) ==="
+tentativa=0
+while [[ "$tentativa" -lt 15 ]]; do
+  if "${COMPOSE[@]}" exec -T gateway wget -qO- http://127.0.0.1:8080/api/identity/health >/dev/null 2>&1; then
+    break
+  fi
+  tentativa=$((tentativa + 1))
+  sleep 2
+done
+for modulo in "${ATIVOS[@]}"; do
+  "${COMPOSE[@]}" exec -T gateway wget -qO- "http://127.0.0.1:8080/api/${modulo}/health" >/dev/null 2>&1 || true
 done
 
 echo ""
