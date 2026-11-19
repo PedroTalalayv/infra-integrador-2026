@@ -79,6 +79,8 @@ tags:
     description: Exportação e anonimização (LGPD)
   - name: busca
     description: Parte do identity na busca global da casca
+  - name: tenants
+    description: Administração de empresas contratantes (casca)
   - name: saude
     description: Estado do serviço
 
@@ -1554,6 +1556,219 @@ paths:
         '403': { $ref: '#/components/responses/SemPermissao' }
         '404': { $ref: '#/components/responses/NaoEncontrado' }
 
+  /api/identity/auth/tenant:
+    post:
+      tags: [autenticacao, tenants]
+      operationId: trocarTenant
+      summary: Alternar o tenant ativo da sessão (Seletor de Empresa na casca)
+      description: |
+        Exige `identity.tenant.administrar`. Emite um novo access token com o `tenant_id` escolhido
+        e rotaciona o refresh token do cookie mantendo o prazo original da sessão.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tenantId]
+              properties:
+                tenantId: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Sessão atualizada para o novo tenant
+          headers:
+            Set-Cookie:
+              description: Novo refresh token com o tenant ativo associado
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/SessaoAberta' }
+        '400': { $ref: '#/components/responses/DadosInvalidos' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '422': { $ref: '#/components/responses/RegraDeNegocio' }
+
+  /api/identity/tenants:
+    get:
+      tags: [tenants]
+      operationId: listarTenants
+      summary: Empresas contratantes (tenants), com busca e filtro por situação
+      description: Exige `identity.tenant.administrar` (RF27).
+      parameters:
+        - name: busca
+          in: query
+          schema: { type: string, maxLength: 100 }
+        - name: situacao
+          in: query
+          schema: { type: string, enum: [ativo, inativo] }
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/Tamanho'
+      responses:
+        '200':
+          description: Página de empresas contratantes
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        allOf:
+                          - $ref: '#/components/schemas/Pagina'
+                          - properties:
+                              itens:
+                                type: array
+                                items: { $ref: '#/components/schemas/TenantDaLista' }
+        '400': { $ref: '#/components/responses/DadosInvalidos' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+    post:
+      tags: [tenants]
+      operationId: cadastrarTenant
+      summary: Cadastrar empresa contratante (tenant), semeando os dez perfis e convidando o administrador inicial
+      description: Exige `identity.tenant.administrar` (RF27).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CadastroDeTenant' }
+      responses:
+        '201':
+          description: Empresa cadastrada
+          headers:
+            Location:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/TenantSalvo' }
+        '400': { $ref: '#/components/responses/DadosInvalidos' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '409': { $ref: '#/components/responses/Conflito' }
+
+  /api/identity/tenants/atual:
+    get:
+      tags: [tenants]
+      operationId: detalharTenantAtual
+      summary: Dados cadastrais da empresa contratante ativa na sessão
+      description: Exige `identity.tenant.administrar`.
+      responses:
+        '200':
+          description: Empresa atual
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/TenantDetalhe' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
+  /api/identity/tenants/{id}:
+    get:
+      tags: [tenants]
+      operationId: detalharTenant
+      summary: Detalhes de uma empresa contratante
+      description: Exige `identity.tenant.administrar`.
+      parameters:
+        - $ref: '#/components/parameters/IdNoCaminho'
+      responses:
+        '200':
+          description: Empresa
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/TenantDetalhe' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+    put:
+      tags: [tenants]
+      operationId: editarTenant
+      summary: Editar razão social, nome fantasia, CNPJ e subdomínio de uma empresa contratante
+      description: Exige `identity.tenant.administrar` (RF27).
+      parameters:
+        - $ref: '#/components/parameters/IdNoCaminho'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/EdicaoDeTenant' }
+      responses:
+        '200':
+          description: Empresa atualizada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/TenantDetalhe' }
+        '400': { $ref: '#/components/responses/DadosInvalidos' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '409': { $ref: '#/components/responses/Conflito' }
+
+  /api/identity/tenants/{id}/desativar:
+    post:
+      tags: [tenants]
+      operationId: desativarTenant
+      summary: Desativar empresa contratante e encerrar as sessões abertas dos seus usuários
+      description: Exige `identity.tenant.administrar` (RF27).
+      parameters:
+        - $ref: '#/components/parameters/IdNoCaminho'
+      responses:
+        '200':
+          description: Empresa desativada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/TenantDetalhe' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+        '422': { $ref: '#/components/responses/RegraDeNegocio' }
+
+  /api/identity/tenants/{id}/reativar:
+    post:
+      tags: [tenants]
+      operationId: reativarTenant
+      summary: Reativar empresa contratante
+      description: Exige `identity.tenant.administrar` (RF27).
+      parameters:
+        - $ref: '#/components/parameters/IdNoCaminho'
+      responses:
+        '200':
+          description: Empresa reativada
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/TenantDetalhe' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
   /api/identity/health:
     get:
       tags: [saude]
@@ -2341,6 +2556,54 @@ components:
       properties:
         id: { type: string, format: uuid, example: 00000000-0000-4000-8000-000000000001 }
         nome: { type: string, example: Centinela Soluções, description: 'Nome fantasia, ou a razão social se não houver' }
+
+    TenantDaLista:
+      type: object
+      required: [id, razaoSocial, ativo, totalUsuarios, atual, criadoEm]
+      properties:
+        id: { type: string, format: uuid }
+        razaoSocial: { type: string, example: Centinela Soluções em Tecnologia Ltda. }
+        nomeFantasia: { type: [string, 'null'], example: Centinela Soluções }
+        cnpj: { type: [string, 'null'], example: '12345678000199' }
+        subdominio: { type: [string, 'null'], example: centinela }
+        ativo: { type: boolean }
+        totalUsuarios: { type: integer }
+        atual: { type: boolean }
+        criadoEm: { type: string, format: date-time }
+
+    TenantDetalhe:
+      allOf:
+        - $ref: '#/components/schemas/TenantDaLista'
+        - type: object
+          required: [totalPerfis, totalEquipes]
+          properties:
+            totalPerfis: { type: integer }
+            totalEquipes: { type: integer }
+
+    TenantSalvo:
+      type: object
+      required: [tenant]
+      properties:
+        tenant: { $ref: '#/components/schemas/TenantDetalhe' }
+        administradorId: { type: [string, 'null'], format: uuid }
+        conviteEnviado: { type: [boolean, 'null'] }
+
+    EdicaoDeTenant:
+      type: object
+      required: [razaoSocial]
+      properties:
+        razaoSocial: { type: string, minLength: 1, maxLength: 160 }
+        nomeFantasia: { type: [string, 'null'], maxLength: 120 }
+        cnpj: { type: [string, 'null'], maxLength: 20 }
+        subdominio: { type: [string, 'null'], maxLength: 63 }
+
+    CadastroDeTenant:
+      allOf:
+        - $ref: '#/components/schemas/EdicaoDeTenant'
+        - type: object
+          properties:
+            adminNome: { type: [string, 'null'], maxLength: 120 }
+            adminEmail: { type: [string, 'null'], maxLength: 254 }
 
     EquipeResumo:
       type: object
