@@ -6,7 +6,7 @@
   "urlFrontend": "/modulos/chamados/",
   "prefixoApi": "/api/chamados",
   "permissaoMenu": "chamados.acessar",
-  "ordemMenu": 60,
+  "ordemMenu": 50,
   "healthcheck": "/api/chamados/health",
   "busca": true,
   "itensSubmenu": [
