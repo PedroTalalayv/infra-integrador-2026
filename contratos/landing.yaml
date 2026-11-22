@@ -739,6 +739,34 @@ paths:
         '403': { $ref: '#/components/responses/SemPermissao' }
         '404': { $ref: '#/components/responses/NaoEncontrado' }
 
+  /api/landing/paginas/{id}/previa:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [Landing Pages]
+      summary: Prévia do rascunho
+      description: |
+        Devolve o mesmo HTML que a publicação geraria agora a partir do rascunho, sem publicar.
+        Usada pelo editor (tela 2).
+      operationId: previaPagina
+      x-responsavel: Giovanna Castro Freitas
+      x-situacao: implementado
+      x-permissao: landing.pagina.ver
+      responses:
+        '200':
+          description: Prévia da página
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/PreviaPagina' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
+
   /api/landing/paginas/{id}/blocos:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -1243,15 +1271,9 @@ paths:
 
         **Domínios autorizados (RF27):** quando a requisição chega de outro site (cabeçalho
         `Origin` diferente da plataforma), o domínio precisa estar na lista do formulário.
-
-        **Implementação atual:** entregue no MR como `GET /public/v1/forms/{formKey}`.
-        A rota precisa ser renomeada para este caminho — o gateway só encaminha
-        `/public/landing/**` ao container `landing` (§12.8) e o caminho não leva versão
-        nem nome em inglês (§8.1).
       operationId: obterFormularioPublico
       x-responsavel: Emmylio Chaves Queiroz
       x-situacao: implementado
-      x-rota-no-mr: GET /public/v1/forms/{formKey}
       security: []
       responses:
         '200':
@@ -1293,12 +1315,9 @@ paths:
 
         A resposta não devolve o id do envio nem dado algum: a superfície pública recebe,
         não consulta (§12.6).
-
-        **Implementação atual:** entregue no MR como `POST /public/v1/forms/{formKey}/submissions`.
       operationId: enviarFormularioPublico
       x-responsavel: Emmylio Chaves Queiroz
       x-situacao: implementado
-      x-rota-no-mr: POST /public/v1/forms/{formKey}/submissions
       security: []
       requestBody:
         required: true
@@ -1340,6 +1359,35 @@ paths:
               schema: { $ref: '#/components/schemas/EnvelopeErro' }
         '429': { $ref: '#/components/responses/LimiteExcedido' }
 
+  /public/landing/f/{chavePublica}:
+    parameters:
+      - $ref: '#/components/parameters/ChavePublica'
+    get:
+      tags: [Público — Formulário]
+      summary: Página hospedada do formulário (tela 13)
+      description: |
+        Página HTML mínima que carrega o `form.js` para o formulário. É o `linkHospedado`
+        mostrado na tela 10, para compartilhar o formulário sem precisar de um site. Responde
+        HTML, fora do envelope, como o `form.js`.
+
+        Chave fora do formato (`^[A-Za-z0-9_-]{1,100}$`) ou inexistente responde `404` em HTML.
+      operationId: obterPaginaHospedadaFormulario
+      x-responsavel: Camila Martins Sousa
+      x-situacao: implementado
+      security: []
+      responses:
+        '200':
+          description: Página HTML com o formulário
+          content:
+            text/html:
+              schema: { type: string }
+        '404':
+          description: Chave inválida ou formulário indisponível.
+          content:
+            text/html:
+              schema: { type: string }
+        '429': { $ref: '#/components/responses/LimiteExcedido' }
+
   /public/landing/form.js:
     get:
       tags: [Público — Formulário]
@@ -1351,6 +1399,16 @@ paths:
 
         Uso no site externo:
         `<script src="https://{dominio}/public/landing/form.js" data-formulario="{chavePublica}" async></script>`
+
+        Atributos opcionais:
+        - `data-container`: id do elemento onde o formulário é desenhado (por padrão, logo
+          depois do script).
+        - `data-pagina-slug`: slug da landing page em que o formulário está, para as métricas.
+        - `data-cor-primaria`: cor do botão e dos destaques, no formato `#RRGGBB`. Valor fora
+          desse formato é ignorado.
+
+        O formulário é desenhado dentro de um Shadow DOM: o CSS do site não o afeta e o
+        dele não vaza para o site.
       operationId: obterScriptEmbed
       x-responsavel: Emmylio Chaves Queiroz
       x-situacao: implementado
@@ -1378,7 +1436,7 @@ paths:
         Rascunho, página despublicada ou arquivada responde `404`.
       operationId: obterPaginaPublica
       x-responsavel: Giovanna Castro Freitas
-      x-situacao: previsto
+      x-situacao: implementado
       security: []
       responses:
         '200':
@@ -1396,6 +1454,33 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EnvelopeErro' }
+        '429': { $ref: '#/components/responses/LimiteExcedido' }
+
+  /public/landing/paginas/{slug}/html:
+    parameters:
+      - $ref: '#/components/parameters/Slug'
+    get:
+      tags: [Público — Landing Page]
+      summary: HTML da versão publicada da landing page
+      description: |
+        Devolve a página pronta para abrir direto no navegador, com `Content-Security-Policy`
+        e `Referrer-Policy`. Responde HTML, fora do envelope. Rascunho, página despublicada
+        ou arquivada responde `404`.
+      operationId: obterHtmlPaginaPublica
+      x-responsavel: Giovanna Castro Freitas
+      x-situacao: implementado
+      security: []
+      responses:
+        '200':
+          description: Página publicada, em HTML
+          content:
+            text/html:
+              schema: { type: string }
+        '404':
+          description: Slug inexistente ou página fora do ar.
+          content:
+            text/html:
+              schema: { type: string }
         '429': { $ref: '#/components/responses/LimiteExcedido' }
 
   # ════════════════════════════════════════════════════════════════════
@@ -1464,34 +1549,23 @@ paths:
               schema: { $ref: '#/components/schemas/EnvelopeErro' }
         '429': { $ref: '#/components/responses/LimiteExcedido' }
 
-  /public/landing/formularios/{chavePublica}/sessoes:
+  /public/landing/chat/{chavePublica}/iniciar:
     parameters:
       - $ref: '#/components/parameters/ChavePublica'
     post:
       tags: [Público — Chatbot e origem]
       summary: Iniciar conversa do chatbot
       description: |
-        Cria a sessão no servidor e devolve a primeira pergunta. O `sessaoId` funciona como
-        segredo da conversa: só quem o recebeu continua a sessão.
-      operationId: iniciarSessaoChatbot
+        Cria a sessão no servidor e devolve as primeiras mensagens do bot. O `sessionId`
+        funciona como segredo da conversa: só quem o recebeu continua a sessão. Quando o
+        formulário exige consentimento, o primeiro passo é o termo (`input.type = CONSENT`).
+      operationId: iniciarChat
       x-responsavel: Pablo Leandro Gloria
-      x-situacao: previsto
+      x-situacao: implementado
       security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              properties:
-                paginaSlug:
-                  type: [string, 'null']
-                origem: { $ref: '#/components/schemas/Origem' }
       responses:
         '201':
           description: Sessão criada
-          headers:
-            Location: { $ref: '#/components/headers/Location' }
           content:
             application/json:
               schema:
@@ -1499,8 +1573,7 @@ paths:
                   - $ref: '#/components/schemas/Envelope'
                   - type: object
                     properties:
-                      data: { $ref: '#/components/schemas/PassoChatbot' }
-        '403': { $ref: '#/components/responses/DominioNaoAutorizado' }
+                      data: { $ref: '#/components/schemas/ChatInicio' }
         '404':
           description: Formulário inexistente, inativo ou sem modo chatbot configurado.
           content:
@@ -1508,23 +1581,53 @@ paths:
               schema: { $ref: '#/components/schemas/EnvelopeErro' }
         '429': { $ref: '#/components/responses/LimiteExcedido' }
 
-  /public/landing/formularios/{chavePublica}/sessoes/{sessaoId}/respostas:
+  /public/landing/chat/{sessaoId}:
     parameters:
-      - $ref: '#/components/parameters/ChavePublica'
+      - $ref: '#/components/parameters/SessaoId'
+    get:
+      tags: [Público — Chatbot e origem]
+      summary: Retomar conversa em andamento
+      description: Devolve o estado da sessão, para o widget continuar de onde o visitante parou.
+      operationId: retomarChat
+      x-responsavel: Pablo Leandro Gloria
+      x-situacao: implementado
+      security: []
+      responses:
+        '200':
+          description: Estado atual da conversa
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - type: object
+                    properties:
+                      data: { $ref: '#/components/schemas/ChatSessao' }
+        '404':
+          description: Sessão inexistente.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/EnvelopeErro' }
+        '429': { $ref: '#/components/responses/LimiteExcedido' }
+
+  /public/landing/chat/{sessaoId}/responder:
+    parameters:
       - $ref: '#/components/parameters/SessaoId'
     post:
       tags: [Público — Chatbot e origem]
-      summary: Responder a pergunta atual (salvamento parcial)
+      summary: Responder a pergunta atual (inclui o consentimento)
       description: |
-        Valida a resposta com as mesmas regras do formulário e grava na sessão. Assim que um
-        e-mail ou telefone válido é obtido **e o consentimento já foi aceito**, o lead é
-        considerado capturado e o evento `landing.chatbot.lead_capturado` é publicado, mesmo
-        que a conversa não chegue ao fim.
+        Serve tanto para responder os campos quanto para aceitar ou recusar o termo de
+        consentimento, que é um passo da própria conversa (`input.type = CONSENT`, com as
+        opções sugeridas em `input.options`). Recusar o termo encerra a conversa com status
+        `DECLINED` e nada é gravado.
 
-        A resposta traz só a próxima pergunta — nunca as respostas já dadas.
-      operationId: responderChatbot
+        A resposta traz só os próximos passos — nunca as respostas já dadas. O envio final
+        segue o mesmo caminho de `POST /public/landing/formularios/{chavePublica}/envios`
+        (consentimento, validação, gravação e `landing.formulario.recebido`).
+      operationId: responderChat
       x-responsavel: Pablo Leandro Gloria
-      x-situacao: previsto
+      x-situacao: implementado
       security: []
       requestBody:
         required: true
@@ -1532,20 +1635,14 @@ paths:
           application/json:
             schema:
               type: object
-              required: [campoId, valor]
+              required: [answer]
               properties:
-                campoId: { type: string, format: uuid }
-                valor:
-                  description: Texto, número, booleano ou lista, conforme o tipo do campo.
-                  oneOf:
-                    - type: string
-                    - type: number
-                    - type: boolean
-                    - type: array
-                      items: { type: string }
+                answer:
+                  type: string
+                  description: Texto digitado pelo visitante, ou a opção escolhida no passo de consentimento.
       responses:
         '200':
-          description: Resposta aceita; próxima pergunta ou fim da conversa
+          description: Resposta processada
           content:
             application/json:
               schema:
@@ -1553,99 +1650,10 @@ paths:
                   - $ref: '#/components/schemas/Envelope'
                   - type: object
                     properties:
-                      data: { $ref: '#/components/schemas/PassoChatbot' }
-        '400':
-          description: Valor inválido para o tipo do campo; a mesma pergunta deve ser repetida.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/EnvelopeErro' }
-        '403': { $ref: '#/components/responses/DominioNaoAutorizado' }
+                      data: { $ref: '#/components/schemas/ChatResposta' }
+        '400': { $ref: '#/components/responses/ErroValidacao' }
         '404':
-          description: Sessão inexistente, de outro formulário ou já concluída.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/EnvelopeErro' }
-        '429': { $ref: '#/components/responses/LimiteExcedido' }
-
-  /public/landing/formularios/{chavePublica}/sessoes/{sessaoId}/consentimento:
-    parameters:
-      - $ref: '#/components/parameters/ChavePublica'
-      - $ref: '#/components/parameters/SessaoId'
-    post:
-      tags: [Público — Chatbot e origem]
-      summary: Registrar o aceite do consentimento na conversa
-      description: |
-        O widget pede o consentimento antes da primeira pergunta de contato (e-mail ou
-        telefone). O texto gravado é o do formulário no momento do aceite.
-      operationId: consentirChatbot
-      x-responsavel: Pablo Leandro Gloria
-      x-situacao: previsto
-      security: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [aceito]
-              properties:
-                aceito: { type: boolean, enum: [true] }
-      responses:
-        '200':
-          description: Consentimento registrado; próxima pergunta
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Envelope'
-                  - type: object
-                    properties:
-                      data: { $ref: '#/components/schemas/PassoChatbot' }
-        '400':
-          description: '`aceito` diferente de `true` (`CONSENTIMENTO_OBRIGATORIO`).'
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/EnvelopeErro' }
-        '404':
-          description: Sessão inexistente, de outro formulário ou já concluída.
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/EnvelopeErro' }
-        '429': { $ref: '#/components/responses/LimiteExcedido' }
-
-  /public/landing/formularios/{chavePublica}/sessoes/{sessaoId}/concluir:
-    parameters:
-      - $ref: '#/components/parameters/ChavePublica'
-      - $ref: '#/components/parameters/SessaoId'
-    post:
-      tags: [Público — Chatbot e origem]
-      summary: Concluir a conversa e gerar o envio
-      description: |
-        Monta o envio com as respostas da sessão e segue o mesmo caminho de
-        `POST /public/landing/formularios/{chavePublica}/envios` (consentimento, validação,
-        gravação e `landing.formulario.recebido`).
-      operationId: concluirChatbot
-      x-responsavel: Pablo Leandro Gloria
-      x-situacao: previsto
-      security: []
-      responses:
-        '200':
-          description: Conversa concluída
-          content:
-            application/json:
-              schema:
-                allOf:
-                  - $ref: '#/components/schemas/Envelope'
-                  - type: object
-                    properties:
-                      data: { $ref: '#/components/schemas/ConfirmacaoEnvio' }
-        '400':
-          description: Faltam respostas obrigatórias ou o consentimento (`CAMPO_OBRIGATORIO`, `CONSENTIMENTO_OBRIGATORIO`).
-          content:
-            application/json:
-              schema: { $ref: '#/components/schemas/EnvelopeErro' }
-        '404':
-          description: Sessão inexistente, de outro formulário ou já concluída.
+          description: Sessão inexistente.
           content:
             application/json:
               schema: { $ref: '#/components/schemas/EnvelopeErro' }
@@ -2002,7 +2010,7 @@ components:
           type: string
           format: uri
           readOnly: true
-          description: Página própria do formulário (tela 13).
+          description: Página própria do formulário (tela 13), no formato `/public/landing/f/{chavePublica}`.
         dominiosAutorizados:
           type: array
           items: { type: string }
@@ -2021,20 +2029,91 @@ components:
               campoId: { type: string, format: uuid }
               posicao: { type: integer, minimum: 1 }
               textoPergunta: { type: string, maxLength: 300, example: "Qual é o seu melhor e-mail?" }
-    PassoChatbot:
+    StatusChat:
+      type: string
+      enum: [ACTIVE, COMPLETED, ABANDONED, DECLINED]
+      description: Situação da conversa. `DECLINED` = o visitante recusou o termo de consentimento.
+    ChatMensagem:
       type: object
       properties:
-        sessaoId: { type: string, format: uuid }
-        pedirConsentimento:
-          type: boolean
-          description: Verdadeiro quando a próxima etapa é o aceite do consentimento.
-        textoConsentimento: { type: [string, 'null'] }
-        proximaPergunta:
-          description: Nula quando todas as perguntas foram respondidas.
+        role: { type: string, enum: [BOT, USER], description: Quem falou }
+        content: { type: string }
+        fieldName:
+          type: string
+          description: 'Só vem quando a mensagem é uma pergunta, para o widget adaptar a entrada (ex.: teclado numérico).'
+    ChatEntrada:
+      type: object
+      description: O que a conversa espera do visitante agora.
+      properties:
+        fieldName: { type: [string, 'null'] }
+        type:
+          type: string
+          description: Tipo do campo (TEXT, EMAIL, PHONE, NUMBER, DATE) ou `CONSENT` no passo de consentimento.
+        options:
+          type: [array, 'null']
+          description: Respostas sugeridas; hoje só no consentimento.
+          items: { type: string }
+        correctable: { type: [boolean, 'null'] }
+    ChatProgresso:
+      type: object
+      description: Para o widget mostrar "Pergunta 2 de 5" e a barra de progresso.
+      properties:
+        atual:
+          type: integer
+          description: Pergunta em aberto (1..total); 0 enquanto o consentimento não foi respondido; total quando terminou.
+        total: { type: integer }
+    ChatAcaoFinal:
+      type: object
+      description: |
+        O que o widget faz quando a conversa termina, a partir da ação pós-envio do formulário.
+        `MESSAGE` mostra a mensagem configurada; `REDIRECT` leva o visitante para a `url` (só http/https).
+      properties:
+        tipo: { type: string, enum: [MESSAGE, REDIRECT] }
+        mensagem: { type: string }
+        url: { type: string, format: uri }
+    ChatInicio:
+      type: object
+      properties:
+        sessionId: { type: string, format: uuid }
+        titulo: { type: string, description: Nome do formulário exibido no cabeçalho do widget }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/ChatMensagem' }
+        input:
           oneOf:
-            - $ref: '#/components/schemas/CampoPublico'
+            - $ref: '#/components/schemas/ChatEntrada'
             - type: 'null'
-        concluida: { type: boolean }
+        progresso: { $ref: '#/components/schemas/ChatProgresso' }
+    ChatSessao:
+      type: object
+      description: Estado completo da conversa, para o cliente retomar de onde parou.
+      properties:
+        sessionId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/StatusChat' }
+        titulo: { type: string }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/ChatMensagem' }
+        input:
+          oneOf:
+            - $ref: '#/components/schemas/ChatEntrada'
+            - type: 'null'
+        progresso: { $ref: '#/components/schemas/ChatProgresso' }
+    ChatResposta:
+      type: object
+      description: Campos nulos não vêm na resposta.
+      properties:
+        status: { $ref: '#/components/schemas/StatusChat' }
+        messages:
+          type: array
+          items: { $ref: '#/components/schemas/ChatMensagem' }
+        input:
+          description: Ausente quando a conversa não espera mais nada.
+          $ref: '#/components/schemas/ChatEntrada'
+        progresso: { $ref: '#/components/schemas/ChatProgresso' }
+        acaoFinal:
+          description: Só quando a conversa termina (`COMPLETED`) e o formulário tem ação pós-envio configurada.
+          $ref: '#/components/schemas/ChatAcaoFinal'
 
     # ── Origem (Pablo) ─────────────────────────────────────────────────
     ToqueOrigem:
@@ -2151,6 +2230,12 @@ components:
             id: { type: string, format: uuid, readOnly: true }
             ordem: { type: integer, readOnly: true }
         - $ref: '#/components/schemas/BlocoEntrada'
+    PreviaPagina:
+      type: object
+      properties:
+        html:
+          type: string
+          description: HTML gerado a partir do rascunho atual.
     PaginaPublicada:
       type: object
       properties:
