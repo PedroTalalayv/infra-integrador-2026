@@ -1,7 +1,7 @@
 asyncapi: 3.0.0
 info:
   title: Financeiro — eventos publicados
-  version: 0.2.0
+  version: 0.3.0
   description: |
     Eventos que o módulo Financeiro publica na exchange `financeiro.eventos`, do tipo
     topic, com o tipo do evento como chave de roteamento (Contrato de Integração §9.7).
@@ -11,10 +11,35 @@ info:
     Origem de cada evento:
     - `financeiro.cobranca.criada`: lançamento avulso (`POST /api/financeiro/cobrancas`)
       ou geração pela recorrência (job ou `POST .../recorrencias/{id}/gerar-cobranca`).
-    - `financeiro.pagamento.confirmado` e `financeiro.pagamento.falhou`: webhook do
-      provedor (`POST /public/financeiro/webhooks/pagamento`). Estorno sai como `falhou`.
-    - `financeiro.pagamento.atrasado`: job da régua de cobrança, quando uma cobrança
-      vence sem pagamento.
+    - `financeiro.pagamento.confirmado`: webhook do provedor
+      (`POST /public/financeiro/webhooks/pagamento`) ou baixa manual
+      (`POST /api/financeiro/cobrancas/{id}/baixas`, RF-12).
+    - `financeiro.pagamento.falhou`: recusa ou estorno informado pelo provedor. Estorno sai como
+      `falhou`, com `motivo: ESTORNADO`.
+    - `financeiro.pagamento.atrasado`: job diário da régua, uma única vez por cobrança vencida
+      (RN-06).
+
+    Os eventos passam por um outbox (`financeiro.eventos_outbox`): gravados na transação do fato e
+    publicados depois do commit, com confirmação do broker.
+
+    `clienteId` e `empresaId` são o mesmo UUID da empresa no CRM; `empresaId` foi acrescentado na
+    0.3.0 para alinhar com a EOR. Campos novos são opcionais: a `versao` continua 1.
+
+    **Consumidos** (o Grupo 5 ainda não publicou o AsyncAPI do Contratos; formato esperado de
+    `dados`, a confirmar com ele):
+    - `contratos.contrato.assinado` → fila `financeiro.contrato-assinado`: cria a regra de
+      recorrência, idempotente pelo `id` do envelope. `dados`: `contratoId`, `empresaId`,
+      `itens[]` (`servicoId`, `descricao`, `quantidade`, `unidade`, `valorUnitario`, `franquia`),
+      opcionais `periodicidade`, `diaGeracao`, `formaPagamento`, `descricao`.
+    - `contratos.contrato.cancelado` → fila `financeiro.contrato-cancelado`: encerra a regra; o
+      valor entra como churn no MRR do mês. `dados`: `contratoId`, opcional `canceladoEm`.
+    Ambas com `.dlq` (exchange `financeiro.dlx`) depois de três falhas.
+
+    **Pedidos à plataforma** em `identity.entrada` (RN-33): `identity.timeline.registrar` a cada
+    pagamento, estorno e aviso da régua; `identity.notificacao.criar` (COBRANCA_PAGA,
+    COBRANCA_VENCIDA) para quem lançou a cobrança; `identity.email.enviar` com o modelo
+    `financeiro.cobranca-regua` (arquivo `emails/financeiro/cobranca-regua.txt`; variáveis `mensagem`,
+    `valor`, `vencimento`, `etapa`). Toda mensagem sai com `user_id = mq_financeiro`.
 defaultContentType: application/json
 
 servers:
@@ -57,7 +82,7 @@ operations:
       - $ref: '#/channels/eventos/messages/cobrancaCriada'
   publicarPagamentoConfirmado:
     action: send
-    summary: O provedor confirmou o pagamento de uma cobrança
+    summary: Pagamento de uma cobrança confirmado (webhook do provedor ou baixa manual)
     channel:
       $ref: '#/channels/eventos'
     messages:
@@ -95,6 +120,7 @@ components:
                 properties:
                   cobrancaId: { type: string, format: uuid }
                   clienteId: { type: string, format: uuid, description: UUID da empresa no CRM }
+                  empresaId: { type: string, format: uuid, description: Igual a clienteId }
                   contratoId: { type: [string, 'null'], format: uuid }
                   valor: { type: number, multipleOf: 0.01, minimum: 0, example: 1490.00 }
                   vencimento: { type: string, format: date, example: '2026-10-10' }
@@ -102,7 +128,7 @@ components:
     PagamentoConfirmado:
       name: financeiro.pagamento.confirmado
       title: Pagamento confirmado
-      summary: Publicado depois do commit do processamento do webhook de pagamento.
+      summary: Publicado depois do commit do webhook de pagamento ou da baixa manual.
       payload:
         allOf:
           - $ref: '#/components/schemas/Envelope'
@@ -113,9 +139,14 @@ components:
                 type: object
                 required: [cobrancaId, clienteId, valorPago]
                 properties:
+                  pagamentoId: { type: string, format: uuid }
                   cobrancaId: { type: string, format: uuid }
                   clienteId: { type: string, format: uuid }
+                  empresaId: { type: string, format: uuid }
                   valorPago: { type: number, multipleOf: 0.01, minimum: 0, example: 1490.00 }
+                  meio: { type: string, enum: [PIX, BOLETO, CARTAO, TRANSFERENCIA] }
+                  statusCobranca: { type: string, enum: [PAGO, PARCIAL] }
+                  saldo: { type: number, multipleOf: 0.01, minimum: 0, description: Saldo restante da cobrança }
 
     PagamentoAtrasado:
       name: financeiro.pagamento.atrasado
@@ -133,7 +164,10 @@ components:
                 properties:
                   cobrancaId: { type: string, format: uuid }
                   clienteId: { type: string, format: uuid }
+                  empresaId: { type: string, format: uuid }
                   vencimento: { type: string, format: date }
+                  diasAtraso: { type: integer, minimum: 1 }
+                  saldoDevedor: { type: number, multipleOf: 0.01, minimum: 0 }
 
     PagamentoFalhou:
       name: financeiro.pagamento.falhou
@@ -149,8 +183,11 @@ components:
                 type: object
                 required: [cobrancaId, clienteId, motivo]
                 properties:
+                  pagamentoId: { type: string, format: uuid }
                   cobrancaId: { type: string, format: uuid }
                   clienteId: { type: string, format: uuid }
+                  empresaId: { type: string, format: uuid }
+                  statusCobranca: { type: string, enum: [ABERTO, AGENDADO, ATRASADO, PARCIAL, PAGO, ESTORNADO] }
                   motivo: { type: string, enum: [REJEITADO, ESTORNADO] }
                   valorPago:
                     type: [number, 'null']

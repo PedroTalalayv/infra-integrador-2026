@@ -21,7 +21,9 @@ permissoes:
     perfisPadrao: [ADMINISTRADOR, FINANCEIRO]
 
   - codigo: financeiro.contareceber.editar
-    descricao: Editar cobrança em aberto ou agendada
+    descricao: >-
+      Editar cobrança em aberto ou agendada; solicitar PIX, boleto ou link de cartão; registrar
+      baixa manual e promessa de pagamento
     perfisPadrao: [ADMINISTRADOR, FINANCEIRO]
 
   - codigo: financeiro.contareceber.excluir
@@ -33,7 +35,7 @@ permissoes:
     perfisPadrao: [ADMINISTRADOR, GESTOR, FINANCEIRO]
 
   - codigo: financeiro.contapagar.criar
-    descricao: Lançar conta a pagar
+    descricao: Lançar conta a pagar e registrar o pagamento (baixa) de conta já aprovada
     perfisPadrao: [ADMINISTRADOR, FINANCEIRO]
 
   - codigo: financeiro.contapagar.aprovar
@@ -45,7 +47,7 @@ permissoes:
     perfisPadrao: [ADMINISTRADOR, GESTOR, FINANCEIRO]
 
   - codigo: financeiro.recorrencia.administrar
-    descricao: Criar ou editar regra de cobrança recorrente
+    descricao: Criar ou editar regra de cobrança recorrente e gerar a cobrança do ciclo manualmente
     perfisPadrao: [ADMINISTRADOR, FINANCEIRO]
 
   - codigo: financeiro.inadimplencia.ver
@@ -57,7 +59,7 @@ permissoes:
     perfisPadrao: [ADMINISTRADOR, GESTOR, FINANCEIRO]
 
   - codigo: financeiro.regua.administrar
-    descricao: Configurar a régua de cobrança
+    descricao: Configurar a régua de cobrança e rodar o job de atraso e régua do tenant
     perfisPadrao: [ADMINISTRADOR, FINANCEIRO]
 
   - codigo: financeiro.dashboard.ver
@@ -67,3 +69,7 @@ permissoes:
   - codigo: financeiro.relatorio.exportar
     descricao: Exportar relatórios financeiros em PDF, XLSX ou CSV
     perfisPadrao: [ADMINISTRADOR, GESTOR, FINANCEIRO, CONTABILIDADE]
+
+  - codigo: financeiro.auditoria.ver
+    descricao: Consultar a auditoria das alterações do módulo (RF-13, RN-68)
+    perfisPadrao: [ADMINISTRADOR]
