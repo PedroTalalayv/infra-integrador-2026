@@ -1,0 +1,6 @@
+Assunto: Cobrança — {{etapa}} · vencimento {{vencimento}}
+
+{{mensagem}}
+
+Valor em aberto: {{valor}}
+Vencimento: {{vencimento}}

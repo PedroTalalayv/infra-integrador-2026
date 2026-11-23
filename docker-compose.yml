@@ -264,6 +264,8 @@ services:
       RABBITMQ_PASSWORD: ${MQ_FINANCEIRO_SENHA}
       SVC_CLIENT_ID: financeiro
       SVC_CLIENT_SECRET: ${SVC_FINANCEIRO_SEGREDO}
+      CRM_BASE_URL: http://crm:8082                       # contatos da empresa para a régua (§9.2)
+      PROVEDOR_WEBHOOK_SEGREDO: ${FINANCEIRO_WEBHOOK_SEGREDO}  # assinatura do webhook do provedor simulado
 
   financeiro-front:
     <<: *servico
