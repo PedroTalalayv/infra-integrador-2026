@@ -1,7 +1,7 @@
 openapi: 3.1.0
 info:
   title: Chamados e Relatórios — Grupo 3
-  version: 0.1.0
+  version: 0.2.0
   summary: Help desk com SLA e motor de relatórios da plataforma.
   description: |
     Endpoints do módulo `chamados`. Abertura e ciclo de vida de chamados técnicos (internos e de cliente),
@@ -90,6 +90,9 @@ paths:
           in: query
           description: Apenas chamados em aberto cujo prazo de resolução vence nas próximas 24 horas
           schema: { type: boolean, default: false }
+        - $ref: '#/components/parameters/FiltroVencido'
+        - $ref: '#/components/parameters/FiltroSemTecnico'
+        - $ref: '#/components/parameters/FiltroTexto'
         - name: ordenar
           in: query
           description: Campo e direção
@@ -113,6 +116,7 @@ paths:
                               itens:
                                 type: array
                                 items: { $ref: '#/components/schemas/ChamadoResumo' }
+        '400': { $ref: '#/components/responses/DadosInvalidos' }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
         '403': { $ref: '#/components/responses/SemPermissao' }
     post:
@@ -145,6 +149,141 @@ paths:
         '400': { $ref: '#/components/responses/DadosInvalidos' }
         '401': { $ref: '#/components/responses/NaoAutenticado' }
         '403': { $ref: '#/components/responses/SemPermissao' }
+
+  /api/chamados/chamados/contadores:
+    get:
+      tags: [chamados]
+      operationId: contarChamados
+      summary: Contadores da fila (indicadores e visões rápidas)
+      description: |
+        Exige `chamados.chamado.ver`. Uma única consulta com os totais que a fila mostra nos cartões e nas
+        visões rápidas, para o front não precisar fazer uma listagem por indicador. "Em aberto" é qualquer
+        status que não seja `resolvido` nem `fechado`. `meus` usa o `sub` do token; token de serviço
+        recebe `meus = 0`.
+      responses:
+        '200':
+          description: Totais do tenant
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data: { $ref: '#/components/schemas/ContadoresFila' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+
+  /api/chamados/chamados/exportar:
+    get:
+      tags: [chamados]
+      operationId: exportarChamados
+      summary: Exportar a fila filtrada em PDF, XLSX ou CSV
+      description: |
+        Exige `chamados.relatorio.exportar`. Exceção do envelope prevista no §8.2 do Contrato: o sucesso é o
+        próprio arquivo, com `Content-Type` e `Content-Disposition`; os erros continuam no envelope.
+
+        Aceita os mesmos filtros e a mesma ordenação de `listarChamados` (sem paginação) e exporta no máximo
+        5000 chamados. Uma linha por chamado, com as colunas da fila: número, assunto, tipo, empresa,
+        categoria, status, prioridade, técnico (id), prazo de resolução, aberto em e atualizado em. Nome do
+        arquivo: `fila-chamados-<data de emissão>.<ext>`.
+
+        O front chama com `fetch`, com o token no cabeçalho, e salva o `blob`. O token nunca vai na URL.
+      parameters:
+        - name: formato
+          in: query
+          required: true
+          description: Formato do arquivo
+          schema: { type: string, enum: [pdf, xlsx, csv] }
+        - name: status
+          in: query
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [novo, em_atendimento, aguardando_cliente, aguardando_fornecedor, escalado, resolvido, fechado, reaberto]
+        - name: prioridade
+          in: query
+          schema: { type: string, enum: [baixa, media, alta, critica] }
+        - name: tipo
+          in: query
+          schema: { type: string, enum: [interno, cliente] }
+        - name: categoriaId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: tecnicoId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: empresaId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: de
+          in: query
+          schema: { type: string, format: date }
+        - name: ate
+          in: query
+          schema: { type: string, format: date }
+        - name: vencendo
+          in: query
+          schema: { type: boolean, default: false }
+        - $ref: '#/components/parameters/FiltroVencido'
+        - $ref: '#/components/parameters/FiltroSemTecnico'
+        - $ref: '#/components/parameters/FiltroTexto'
+        - name: ordenar
+          in: query
+          schema:
+            type: string
+            enum: ['criadoEm,desc', 'criadoEm,asc', 'venceResolucaoEm,asc', 'prioridade,desc']
+            default: 'criadoEm,desc'
+      responses:
+        '200':
+          description: O arquivo, fora do envelope
+          headers:
+            Content-Disposition:
+              description: Nome sugerido do arquivo
+              schema: { type: string, example: 'attachment; filename="fila-chamados-2026-11-24.xlsx"' }
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+            application/vnd.openxmlformats-officedocument.spreadsheetml.sheet:
+              schema: { type: string, format: binary }
+            text/csv:
+              schema: { type: string, format: binary }
+        '400': { $ref: '#/components/responses/DadosInvalidos' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+
+  /api/chamados/chamados/{id}/parecidos:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        description: Identificador do chamado
+        schema: { type: string, format: uuid }
+    get:
+      tags: [chamados]
+      operationId: listarChamadosParecidos
+      summary: Chamados parecidos com este ("já aconteceu antes")
+      description: |
+        Exige `chamados.chamado.ver`. Até cinco chamados da mesma categoria e do mesmo solicitante — a mesma
+        empresa (`cliente`) ou o mesmo usuário (`interno`) — abertos nos 90 dias anteriores à abertura deste,
+        sem incluir o próprio chamado. Os mais recentes primeiro. Traz a solução quando o chamado foi
+        resolvido, para o técnico reaproveitar.
+      responses:
+        '200':
+          description: Até cinco chamados parecidos
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Envelope'
+                  - properties:
+                      data:
+                        type: array
+                        maxItems: 5
+                        items: { $ref: '#/components/schemas/ChamadoParecido' }
+        '401': { $ref: '#/components/responses/NaoAutenticado' }
+        '403': { $ref: '#/components/responses/SemPermissao' }
+        '404': { $ref: '#/components/responses/NaoEncontrado' }
 
   /api/chamados/chamados/{id}:
     parameters:
@@ -1432,6 +1571,23 @@ components:
       in: query
       description: Itens por página, no máximo 100
       schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    FiltroVencido:
+      name: vencido
+      in: query
+      description: Apenas chamados em aberto cujo prazo de resolução já passou
+      schema: { type: boolean, default: false }
+    FiltroSemTecnico:
+      name: semTecnico
+      in: query
+      description: Apenas chamados sem técnico responsável. Combinado com `tecnicoId`, responde 400.
+      schema: { type: boolean, default: false }
+    FiltroTexto:
+      name: q
+      in: query
+      description: |
+        Texto livre, sem diferenciar maiúsculas nem acentos: o número do chamado (com ou sem `#`), um trecho
+        do assunto ou do nome da empresa.
+      schema: { type: string, minLength: 2, maxLength: 120 }
     RelatorioDe:
       name: de
       in: query
@@ -1623,7 +1779,7 @@ components:
 
     ChamadoResumo:
       type: object
-      required: [id, numero, assunto, status, prioridade, criadoEm]
+      required: [id, numero, assunto, status, prioridade, criadoEm, tipo, categoriaId, categoriaNome, totalInteracoes, ultimaAtividadeEm]
       properties:
         id: { type: string, format: uuid, example: 5c2d9e1a-0f3b-4b7e-9a6d-1e2f3a4b5c6d }
         numero: { type: integer, example: 1042 }
@@ -1636,6 +1792,55 @@ components:
         tecnicoId: { type: [string, 'null'], format: uuid }
         venceResolucaoEm: { type: [string, 'null'], format: date-time }
         criadoEm: { type: string, format: date-time, example: '2026-09-17T13:02:11Z' }
+        tipo: { type: string, enum: [interno, cliente], example: cliente }
+        empresaId: { type: [string, 'null'], format: uuid }
+        empresaNome: { type: [string, 'null'], example: Empresa A }
+        solicitanteUsuarioId:
+          type: [string, 'null']
+          format: uuid
+          description: Só em chamado `interno`.
+        categoriaId: { type: string, format: uuid }
+        categoriaNome:
+          type: [string, 'null']
+          description: Nome atual da categoria; `null` quando a categoria foi excluída.
+          example: Infraestrutura
+        prazoResolucaoMinutos:
+          type: [integer, 'null']
+          description: Prazo total de resolução congelado na abertura; com `criadoEm` e `venceResolucaoEm` permite desenhar o consumo do SLA.
+          example: 360
+        totalInteracoes: { type: integer, minimum: 0, example: 4 }
+        ultimaAtividadeEm:
+          type: string
+          format: date-time
+          description: O mais recente entre a última interação, o último apontamento, a última transição e `criadoEm`.
+          example: '2026-09-17T18:40:00Z'
+
+    ContadoresFila:
+      type: object
+      required: [emAberto, vencidos, vencendo, semTecnico, aguardando, escalados, meus, total]
+      properties:
+        emAberto: { type: integer, minimum: 0, description: "Status diferente de `resolvido` e `fechado`." }
+        vencidos: { type: integer, minimum: 0, description: "Em aberto com prazo de resolução já passado (o mesmo de `vencido=true`)." }
+        vencendo: { type: integer, minimum: 0, description: "O mesmo de `vencendo=true`." }
+        semTecnico: { type: integer, minimum: 0, description: "Em aberto sem técnico." }
+        aguardando: { type: integer, minimum: 0, description: "Em `aguardando_cliente` ou `aguardando_fornecedor`." }
+        escalados: { type: integer, minimum: 0 }
+        meus: { type: integer, minimum: 0, description: "Em aberto com `tecnicoId` igual ao `sub` do token." }
+        total: { type: integer, minimum: 0, description: "Todos os chamados, em qualquer status." }
+
+    ChamadoParecido:
+      type: object
+      required: [id, numero, assunto, status, criadoEm]
+      properties:
+        id: { type: string, format: uuid }
+        numero: { type: integer, example: 998 }
+        assunto: { type: string, example: Backup do servidor falhou }
+        status:
+          type: string
+          enum: [novo, em_atendimento, aguardando_cliente, aguardando_fornecedor, escalado, resolvido, fechado, reaberto]
+        criadoEm: { type: string, format: date-time }
+        resolvidoEm: { type: [string, 'null'], format: date-time }
+        solucao: { type: [string, 'null'], example: 'Volume D: cheio; arquivos temporários removidos.' }
 
     NovoChamado:
       type: object
