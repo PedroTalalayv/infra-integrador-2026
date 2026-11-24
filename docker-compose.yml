@@ -239,6 +239,7 @@ services:
       RABBITMQ_PASSWORD: ${MQ_CONTRATOS_SENHA}
       SVC_CLIENT_ID: contratos
       SVC_CLIENT_SECRET: ${SVC_CONTRATOS_SEGREDO}
+      RECAPTCHA_SECRET_KEY: ${RECAPTCHA_SECRET_KEY}
 
   contratos-front:
     <<: *servico
